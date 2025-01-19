@@ -1,0 +1,807 @@
+-- SA.HUB Script
+-- Professional Edition v2.0
+
+-- Configuration
+local CONFIG = {
+    COLORS = {
+        BACKGROUND = Color3.fromRGB(25, 25, 25),
+        PRIMARY = Color3.fromRGB(40, 40, 40),
+        SECONDARY = Color3.fromRGB(30, 30, 30),
+        TEXT = Color3.fromRGB(255, 255, 255),
+        ACCENT = Color3.fromRGB(70, 130, 255),
+        CLOSE = Color3.fromRGB(255, 70, 70)
+    },
+    GUI = {
+        FLOAT_SIZE = Vector2.new(150, 70),
+        COMMANDS_SIZE = Vector2.new(300, 400),
+        COMMANDBAR_SIZE = Vector2.new(400, 50),
+        TITLE_HEIGHT = 40,
+        BUTTON_HEIGHT = 40
+    },
+    FLOAT = {
+        PLATFORM_SIZE = Vector3.new(1000, 1, 1000),
+        HEIGHT_CHANGE = 1,
+        INITIAL_OFFSET = -3
+    },
+     KEYBIND = Enum.KeyCode.L
+}
+
+-- Services
+local Services = {
+    Players = game:GetService("Players"),
+    TweenService = game:GetService("TweenService"),
+    CoreGui = game:GetService("CoreGui"),
+    VoiceChatService = game:GetService("VoiceChatService"),
+    UserInputService = game:GetService("UserInputService"),
+    RunService = game:GetService("RunService"),
+    HttpService = game:GetService("HttpService"),
+    TextChatService = game:GetService("TextChatService"),
+    ReplicatedStorage = game:GetService("ReplicatedStorage")
+}
+
+-- Utility Functions
+local Utility = {}
+
+function Utility.CreateInstance(className, properties)
+    local instance = Instance.new(className)
+    for prop, value in pairs(properties) do
+        instance[prop] = value
+    end
+    return instance
+end
+
+function Utility.Tween(instance, properties, duration)
+    local tween = Services.TweenService:Create(
+        instance,
+        TweenInfo.new(duration, Enum.EasingStyle.Quad),
+        properties
+    )
+    tween:Play()
+    return tween
+end
+
+-- Main GUI Class
+local SAHUB = {
+    Player = Services.Players.LocalPlayer,
+    Screen = nil,
+    FloatPart = nil,
+    FloatGui = nil,
+    CommandsGui = nil,
+    CommandBarGui = nil,
+    CommandBarInput = nil,
+    CurrentHeight = 0,
+    Connections = {},
+    BangGui = nil,
+    BangActive = false,
+    TargetPlayer = nil,
+    TargetName = nil,
+}
+
+function SAHUB:Init()
+    self.Screen = Utility.CreateInstance("ScreenGui", {
+        Name = "SA.HUB",
+        ResetOnSpawn = false,
+        Parent = Services.CoreGui
+    })
+    
+    self:CreateIntro()
+    self:CreateCommandsGui()
+    self:SetupChatCommands()
+    self:SetupKeybind()
+end
+
+function SAHUB:CreateIntro()
+    local intro = Utility.CreateInstance("Frame", {
+        Name = "Intro",
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundColor3 = CONFIG.COLORS.BACKGROUND,
+        Parent = self.Screen
+    })
+    
+    local logo = Utility.CreateInstance("TextLabel", {
+        Name = "Logo",
+        Size = UDim2.new(0, 300, 0, 100),
+        Position = UDim2.new(0.5, -150, 0.5, -50),
+        BackgroundTransparency = 1,
+        TextColor3 = CONFIG.COLORS.TEXT,
+        TextSize = 48,
+        Font = Enum.Font.GothamBold,
+        Text = "SA.HUB",
+        TextTransparency = 1,
+        Parent = intro
+    })
+    
+     local keybindLabel = Utility.CreateInstance("TextLabel", {
+        Name = "KeybindLabel",
+        Size = UDim2.new(0, 300, 0, 30),
+        Position = UDim2.new(0.5, -150, 0.5, 50),
+        BackgroundTransparency = 1,
+        TextColor3 = CONFIG.COLORS.TEXT,
+        TextSize = 14,
+        Font = Enum.Font.Gotham,
+        Text = "(Press L to activate cmds)",
+         TextTransparency = 1,
+        Parent = intro
+    })
+    
+    -- Animate intro
+    Utility.Tween(logo, {TextTransparency = 0}, 1)
+    Utility.Tween(keybindLabel, {TextTransparency = 0}, 1)
+    task.wait(2)
+    Utility.Tween(intro, {BackgroundTransparency = 1}, 0.5).Completed:Wait()
+    intro:Destroy()
+end
+
+function SAHUB:CreateFloatGui()
+    if self.FloatGui then return end
+    
+    self.FloatGui = Utility.CreateInstance("Frame", {
+        Name = "FloatGui",
+        Size = UDim2.new(0, CONFIG.GUI.FLOAT_SIZE.X, 0, CONFIG.GUI.FLOAT_SIZE.Y),
+        Position = UDim2.new(1, -170, 1, -90),
+        BackgroundColor3 = CONFIG.COLORS.SECONDARY,
+        BorderSizePixel = 0,
+        Parent = self.Screen
+    })
+    
+    -- Add float controls and height display
+    local title = Utility.CreateInstance("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 30),
+        BackgroundColor3 = CONFIG.COLORS.PRIMARY,
+        TextColor3 = CONFIG.COLORS.TEXT,
+        TextSize = 14,
+        Font = Enum.Font.GothamBold,
+        Text = "Float Control",
+        Parent = self.FloatGui
+    })
+    
+    local heightLabel = Utility.CreateInstance("TextLabel", {
+        Name = "HeightLabel",
+        Size = UDim2.new(1, 0, 0, 30),
+        Position = UDim2.new(0, 0, 0.5, 0),
+        BackgroundTransparency = 1,
+        TextColor3 = CONFIG.COLORS.TEXT,
+        TextSize = 14,
+        Font = Enum.Font.Gotham,
+        Text = "Height: 0",
+        Parent = self.FloatGui
+    })
+    
+    return heightLabel
+end
+
+function SAHUB:CreateCommandsGui()
+    self.CommandsGui = Utility.CreateInstance("Frame", {
+        Name = "CommandsGui",
+        Size = UDim2.new(0, CONFIG.GUI.COMMANDS_SIZE.X, 0, CONFIG.GUI.COMMANDS_SIZE.Y),
+        Position = UDim2.new(0.5, -150, 0.5, -200),
+        BackgroundColor3 = CONFIG.COLORS.SECONDARY,
+        BorderSizePixel = 0,
+        Visible = false,
+        Parent = self.Screen
+    })
+    
+    -- Add draggable title bar and close button
+    self:CreateTitleBar(self.CommandsGui, "SA.HUB Commands")
+    self:CreateCommandsList()
+end
+
+function SAHUB:CreateTitleBar(gui, titleText)
+    local titleBar = Utility.CreateInstance("Frame", {
+        Name = "TitleBar",
+        Size = UDim2.new(1, 0, 0, CONFIG.GUI.TITLE_HEIGHT),
+        BackgroundColor3 = CONFIG.COLORS.PRIMARY,
+        Parent = gui
+    })
+    
+    Utility.CreateInstance("TextLabel", {
+        Size = UDim2.new(1, -40, 1, 0),
+        BackgroundTransparency = 1,
+        TextColor3 = CONFIG.COLORS.TEXT,
+        TextSize = 20,
+        Font = Enum.Font.GothamBold,
+        Text = titleText,
+        Parent = titleBar
+    })
+    
+    local closeButton = Utility.CreateInstance("TextButton", {
+        Size = UDim2.new(0, 40, 1, 0),
+        Position = UDim2.new(1, -40, 0, 0),
+        BackgroundColor3 = CONFIG.COLORS.CLOSE,
+        TextColor3 = CONFIG.COLORS.TEXT,
+        TextSize = 20,
+        Font = Enum.Font.GothamBold,
+        Text = "X",
+        Parent = titleBar
+    })
+    
+    -- Make GUI draggable
+    local dragging, dragInput, dragStart, startPos
+    
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = gui.Position
+        end
+    end)
+    
+    titleBar.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+    
+    Services.UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            gui.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    Services.UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    closeButton.MouseButton1Click:Connect(function()
+        gui.Visible = false
+    end)
+end
+
+function SAHUB:CreateCommandsList()
+    local commandsList = Utility.CreateInstance("ScrollingFrame", {
+        Size = UDim2.new(1, -20, 1, -60),
+        Position = UDim2.new(0, 10, 0, 50),
+        BackgroundTransparency = 1,
+        ScrollBarThickness = 4,
+        Parent = self.CommandsGui
+    })
+    
+     local layout = Utility.CreateInstance("UIListLayout", {
+        Padding = UDim.new(0, 5),
+        Parent = commandsList
+    })
+    
+    -- Command buttons
+     for cmd, func in pairs(self.Commands) do
+        if cmd == "!tp" then
+           local buttonFrame =  Utility.CreateInstance("Frame",{
+               Size = UDim2.new(1,0,0,CONFIG.GUI.BUTTON_HEIGHT),
+               BackgroundTransparency = 1,
+               Parent = commandsList,
+           })
+           
+            local button = Utility.CreateInstance("TextButton", {
+                Size = UDim2.new(0.4, 0, 1, 0),
+                BackgroundColor3 = CONFIG.COLORS.PRIMARY,
+                TextColor3 = CONFIG.COLORS.TEXT,
+                TextSize = 16,
+                Font = Enum.Font.Gotham,
+                Text = cmd,
+                Parent = buttonFrame
+            })
+
+            local input = Utility.CreateInstance("TextBox", {
+                Size = UDim2.new(0.6,-10,1,0),
+                Position = UDim2.new(0.4,10,0,0),
+                BackgroundColor3 = CONFIG.COLORS.PRIMARY,
+                TextColor3 = CONFIG.COLORS.TEXT,
+                TextSize = 14,
+                Font = Enum.Font.Gotham,
+                Text = "Name",
+                ClearTextOnFocus = true,
+                Parent = buttonFrame
+                
+            })
+
+            button.MouseButton1Click:Connect(function()
+               self:TeleportToPlayer(input.Text)
+             end)
+
+          input.Focused:Connect(function()
+               input.Text = ""
+          end)
+        else
+              local button = Utility.CreateInstance("TextButton", {
+                  Size = UDim2.new(1, 0, 0, CONFIG.GUI.BUTTON_HEIGHT),
+                BackgroundColor3 = CONFIG.COLORS.PRIMARY,
+                TextColor3 = CONFIG.COLORS.TEXT,
+                TextSize = 16,
+                Font = Enum.Font.Gotham,
+                Text = cmd,
+                Parent = commandsList
+            })
+            
+            button.MouseButton1Click:Connect(function()
+                self:ExecuteCommand(cmd)
+            end)
+        end
+    end
+end
+
+function SAHUB:ExecuteCommand(command)
+    local commandParts = string.split(command, " ")
+    local cmdName = commandParts[1]
+
+    if self.Commands[cmdName] then
+        local args = {}
+        for i = 2, #commandParts do
+            table.insert(args, commandParts[i])
+        end
+        self.Commands[cmdName](unpack(args))
+     elseif cmdName == "!tp" and #commandParts >= 2 then
+         self:TeleportToPlayer(commandParts[2])
+    elseif cmdName == "!target" and #commandParts >= 2 then
+         self:SetTargetPlayer(commandParts[2])
+    end
+end
+
+function SAHUB:CreateBangGui()
+  if self.BangGui then return end
+
+    self.BangGui = Utility.CreateInstance("Frame",{
+        Name = "BangGui",
+        Size = UDim2.new(0,200,0,100),
+        Position = UDim2.new(0.5,-100,0.2, -50),
+        BackgroundColor3 = CONFIG.COLORS.SECONDARY,
+        BorderSizePixel = 0,
+        Visible = false,
+        Parent = self.Screen
+    })
+
+    self:CreateTitleBar(self.BangGui, "Bang Toggle")
+
+    local toggleButton = Utility.CreateInstance("TextButton",{
+          Size = UDim2.new(1,-20,0.4,-10),
+          Position = UDim2.new(0, 10, 0.3,10),
+          BackgroundColor3 = CONFIG.COLORS.ACCENT,
+          TextColor3 = CONFIG.COLORS.TEXT,
+          TextSize = 16,
+          Font = Enum.Font.GothamBold,
+          Text = "BANG",
+          Parent = self.BangGui
+        })
+
+      toggleButton.MouseButton1Click:Connect(function()
+          self:ToggleBang()
+          if self.BangActive then
+            toggleButton.Text = "UNBANG"
+            toggleButton.BackgroundColor3 = CONFIG.COLORS.CLOSE
+          else
+              toggleButton.Text = "BANG"
+               toggleButton.BackgroundColor3 = CONFIG.COLORS.ACCENT
+          end
+     end)
+end
+
+function SAHUB:ToggleBang()
+  if not self.TargetPlayer then
+    local TextChatService = Services.TextChatService
+        local function chatMessage(str)
+            str = tostring(str)
+            if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+                TextChatService.TextChannels.RBXGeneral:SendAsync(str)
+            else
+                Services.ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(str, "All")
+            end
+        end
+           chatMessage("No target selected. Use !target <displayname>")
+          self.BangActive = false
+    return
+  end
+    self.BangActive = not self.BangActive
+
+    if self.BangActive then
+      self:StartBang()
+    else
+      self:StopBang()
+    end
+end
+
+function SAHUB:StartBang()
+   if not self.TargetPlayer or not self.TargetPlayer.Character or not self.TargetPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+    
+      local targetRootPart = self.TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+   local playerRootPart = self.Player.Character:FindFirstChild("HumanoidRootPart")
+
+    
+    local targetPos = targetRootPart.Position
+     local playerPos = playerRootPart.Position
+    local direction = (targetPos - playerPos).Unit
+
+       local teleportPosition = targetPos - direction * 5 --Teleport 5 studs away from the target
+     playerRootPart.CFrame = CFrame.new(teleportPosition, targetPos)
+   
+    if loadstring then
+       loadstring(
+    [[
+    local args = {"sleep"}
+    if game:GetService("Players").LocalPlayer.Name == " ]]..self.Player.Name ..[[ "then
+    	for i,v in pairs(args) do
+    		if game.CoreGui:FindFirstChild("infYield") then
+			    game:GetService("ReplicatedStorage").infYield.Remotes.Call:FireServer(v)
+    		end
+    	end
+      end
+    ]]
+    )()
+    end
+   
+  self.Connections.BangWalk =  Services.RunService.Heartbeat:Connect(function()
+      if not self.BangActive then return end
+      
+       local targetRootPart = self.TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not targetRootPart then return end
+       
+      local direction = (targetRootPart.Position - playerRootPart.Position).Unit
+
+          local newPos = targetRootPart.CFrame * CFrame.new(direction * 0.8 )
+           playerRootPart.CFrame =  newPos * CFrame.Angles(0,math.pi,0)
+          task.wait(0.5)
+          local newPos = targetRootPart.CFrame * CFrame.new(direction * 0.8 * -1)
+          playerRootPart.CFrame = newPos * CFrame.Angles(0,math.pi,0)
+            task.wait(0.5)
+      end)
+  if loadstring then
+       loadstring(
+    [[
+    local args = {"noanim"}
+    if game:GetService("Players").LocalPlayer.Name == " ]]..self.Player.Name ..[[ "then
+    	for i,v in pairs(args) do
+    		if game.CoreGui:FindFirstChild("infYield") then
+			    game:GetService("ReplicatedStorage").infYield.Remotes.Call:FireServer(v)
+    		end
+    	end
+      end
+    ]]
+    )()
+    end
+end
+
+function SAHUB:StopBang()
+    if self.Connections.BangWalk then
+      self.Connections.BangWalk:Disconnect()
+        self.Connections.BangWalk = nil
+    end
+end
+
+function SAHUB:SetTargetPlayer(name)
+  local targetPlayer = nil
+    local lowerTargetName = name:lower()
+    
+    for _, player in ipairs(Services.Players:GetPlayers()) do
+        if player.DisplayName:lower():sub(1,#lowerTargetName) == lowerTargetName then
+             targetPlayer = player
+             break
+        end
+    end
+
+    if targetPlayer then
+      self.TargetPlayer = targetPlayer
+      self.TargetName = targetPlayer.DisplayName
+      local TextChatService = Services.TextChatService
+        local function chatMessage(str)
+            str = tostring(str)
+            if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+                TextChatService.TextChannels.RBXGeneral:SendAsync(str)
+            else
+                Services.ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(str, "All")
+            end
+        end
+          chatMessage("Targeted player: " .. targetPlayer.DisplayName)
+    else
+      local TextChatService = Services.TextChatService
+        local function chatMessage(str)
+            str = tostring(str)
+            if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+                TextChatService.TextChannels.RBXGeneral:SendAsync(str)
+            else
+                Services.ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(str, "All")
+            end
+        end
+          chatMessage("Target not found.")
+      self.TargetPlayer = nil
+      self.TargetName = nil
+    end
+end
+
+-- Command Functions
+SAHUB.Commands = {
+		["!baseplate"] = function()
+       game.Workspace.Baseplate.Size = Vector3.new(2048, 16, 2048)
+
+local Workspace = game:GetService("Workspace");
+local Players = game:GetService("Players");
+local Player = Players.LocalPlayer
+local Terrain = Workspace.Terrain
+
+Terrain:FillBlock(CFrame.new(66, -10, 72.5), Vector3.new(10000, 16, 10000), Enum.Material.Asphalt)
+end,
+	["!ssj"] = function()
+       loadstring(game:HttpGet("https://raw.githubusercontent.com/0Ben1/fe/main/obf_11l7Y131YqJjZ31QmV5L8pI23V02b3191sEg26E75472Wl78Vi8870jRv5txZyL1.lua.txt"))()
+	end,
+	
+    ["!ak"] = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/LOLkeeptrying/AKADMIN/refs/heads/main/Congratslol"))()
+		end,
+    ["!if"] = function()
+        loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()
+    end,
+    ["!sb"] = function()
+        loadstring(game:HttpGet('https://raw.githubusercontent.com/H20CalibreYT/SystemBroken/main/script'))()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Gi7331/scripts/main/Emote.lua"))()
+    end,
+    ["!unban"] = function()
+        Services.VoiceChatService:joinVoice()
+    end,
+	   ["!DARKMAP"] = function()
+       loadstring(game:HttpGet("https://raw.githubusercontent.com/Samet123Apfl/darkmap/refs/heads/main/dark%20map"))()
+	   end,
+    ["!vc"] = function()
+        Services.VoiceChatService:joinVoice()
+    end,
+	    ["!Ständer"] = function()
+       loadstring(game:HttpGet("https://raw.githubusercontent.com/Samet123Apfl/st-nda/refs/heads/main/ständer"))()
+	   end,
+	["!Fuck"] = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Samet123Apfl/siksik/refs/heads/main/siksik"))()
+		end,
+    ["!float"] = function()
+        SAHUB:EnableFloat()
+    end,
+    ["!unfloat"] = function()
+        SAHUB:DisableFloat()
+    end,
+	    ["!Drehteil"] = function()
+      loadstring(game:HttpGet("https://raw.githubusercontent.com/Samet123Apfl/dreh-teil/refs/heads/main/dreh%20teil"))()
+     end,
+     ["!Jerk"] = function()
+         loadstring(game:HttpGet("https://pastefy.app/YZoglOyJ/raw"))() 
+     end,
+	 ["!clearchat"] = function()
+		local TextChatService = Services.TextChatService
+		local function chatMessage(str)
+		str = tostring(str)
+			if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+			TextChatService.TextChannels.RBXGeneral:SendAsync(str)
+			else
+			Services.ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(str, "All")
+			end
+		end
+
+		local blob = "\u{000D}"
+		chatMessage("##".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. "[CHATT CLEARED] ")
+	end,
+    ["!credits"] = function()
+        local TextChatService = Services.TextChatService
+        local function chatMessage(str)
+            str = tostring(str)
+            if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+                TextChatService.TextChannels.RBXGeneral:SendAsync(str)
+            else
+                Services.ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(str, "All")
+            end
+        end
+    
+        local blob = "\u{000D}"
+        chatMessage("##".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. " ".. blob .. "[SA.HUB SCRIPT ON TOP] ")
+    end,
+     ["!flip"] = function()
+        --[[
+	WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
+]]
+wait(5)
+
+--[[ Info ]]--
+
+local ver = "2.00"
+local scriptname = "feFlip"
+
+
+--[[ Keybinds ]]--
+
+local FrontflipKey = Enum.KeyCode.Z
+local BackflipKey = Enum.KeyCode.X
+local AirjumpKey = Enum.KeyCode.C
+
+
+--[[ Dependencies ]]--
+
+local ca = game:GetService("ContextActionService")
+local zeezy = game:GetService("Players").LocalPlayer
+local h = 0.0174533
+local antigrav
+
+
+--[[ Functions ]]--
+
+function zeezyFrontflip(act,inp,obj)
+	if inp == Enum.UserInputState.Begin then
+		zeezy.Character.Humanoid:ChangeState("Jumping")
+		wait()
+		zeezy.Character.Humanoid.Sit = true
+		for i = 1,360 do 
+			delay(i/720,function()
+			zeezy.Character.Humanoid.Sit = true
+				zeezy.Character.HumanoidRootPart.CFrame = zeezy.Character.HumanoidRootPart.CFrame * CFrame.Angles(-h,0,0)
+			end)
+		end
+		wait(0.55)
+		zeezy.Character.Humanoid.Sit = false
+	end
+end
+
+function zeezyBackflip(act,inp,obj)
+	if inp == Enum.UserInputState.Begin then
+		zeezy.Character.Humanoid:ChangeState("Jumping")
+		wait()
+		zeezy.Character.Humanoid.Sit = true
+		for i = 1,360 do
+			delay(i/720,function()
+			zeezy.Character.Humanoid.Sit = true
+				zeezy.Character.HumanoidRootPart.CFrame = zeezy.Character.HumanoidRootPart.CFrame * CFrame.Angles(h,0,0)
+			end)
+		end
+		wait(0.55)
+		zeezy.Character.Humanoid.Sit = false
+	end
+end
+
+function zeezyAirjump(act,inp,obj)
+	if inp == Enum.UserInputState.Begin then
+		zeezy.Character:FindFirstChildOfClass'Humanoid':ChangeState("Seated")
+		wait()
+		zeezy.Character:FindFirstChildOfClass'Humanoid':ChangeState("Jumping")	
+	end
+end
+
+
+--[[ Binds ]]--
+
+ca:BindAction("zeezyFrontflip",zeezyFrontflip,false,FrontflipKey)
+ca:BindAction("zeezyBackflip",zeezyBackflip,false,BackflipKey)
+ca:BindAction("zeezyAirjump",zeezyAirjump,false,AirjumpKey)
+
+--[[ Load Message ]]--
+
+print(scriptname .. " " .. ver .. " loaded successfully")
+print("made by Zeezy#7203")
+
+local notifSound = Instance.new("Sound",workspace)
+notifSound.PlaybackSpeed = 1.5
+notifSound.Volume = 0.15
+notifSound.SoundId = "rbxassetid://170765130"
+notifSound.PlayOnRemove = true
+notifSound:Destroy()
+game.StarterGui:SetCore("SendNotification", {Title = "feFlip", Text = "feFlip loaded successfully!", Icon = "rbxassetid://505845268", Duration = 5, Button1 = "Okay"})
+     end,
+}
+
+function SAHUB:TeleportToPlayer(targetName)
+    local targetPlayer = nil
+    local lowerTargetName = targetName:lower()
+    
+    for _, player in ipairs(Services.Players:GetPlayers()) do
+        if player.DisplayName:lower():sub(1,#lowerTargetName) == lowerTargetName then
+             targetPlayer = player
+             break
+        end
+    end
+
+    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local targetPos = targetPlayer.Character.HumanoidRootPart.Position + Vector3.new(0, 2, 0)
+        local character = self.Player.Character
+         if character and character:FindFirstChild("HumanoidRootPart") then
+              character.HumanoidRootPart.CFrame = CFrame.new(targetPos)
+        end
+    else
+       local TextChatService = Services.TextChatService
+        local function chatMessage(str)
+            str = tostring(str)
+            if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+                TextChatService.TextChannels.RBXGeneral:SendAsync(str)
+            else
+                Services.ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(str, "All")
+            end
+        end
+           chatMessage("Player not found or not loaded yet.")
+    end
+end
+
+function SAHUB:EnableFloat()
+    if self.FloatPart then return end
+    
+    self.FloatPart = Utility.CreateInstance("Part", {
+        Size = CONFIG.FLOAT.PLATFORM_SIZE,
+        Anchored = true,
+        CanCollide = true,
+        Transparency = 1,
+        Name = "FloatPart"
+    })
+    
+    local character = self.Player.Character
+    if character and character:FindFirstChild("HumanoidRootPart") then
+        self.CurrentHeight = character.HumanoidRootPart.Position.Y + CONFIG.FLOAT.INITIAL_OFFSET
+        self.FloatPart.Position = Vector3.new(
+            character.HumanoidRootPart.Position.X,
+            self.CurrentHeight,
+            character.HumanoidRootPart.Position.Z
+        )
+    end
+    
+    self.FloatPart.Parent = workspace
+    local heightLabel = self:CreateFloatGui()
+    
+    -- Height control
+    self.Connections.HeightControl = Services.UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.Up then
+            self.CurrentHeight = self.CurrentHeight + CONFIG.FLOAT.HEIGHT_CHANGE
+            self:UpdateFloatHeight(heightLabel)
+        elseif input.KeyCode == Enum.KeyCode.Down then
+            self.CurrentHeight = self.CurrentHeight - CONFIG.FLOAT.HEIGHT_CHANGE
+            self:UpdateFloatHeight(heightLabel)
+        end
+    end)
+    
+    -- Position update
+    self.Connections.PositionUpdate = Services.RunService.Heartbeat:Connect(function()
+        if self.FloatPart and self.Player.Character and self.Player.Character:FindFirstChild("HumanoidRootPart") then
+            local pos = self.Player.Character.HumanoidRootPart.Position
+            self.FloatPart.Position = Vector3.new(pos.X, self.CurrentHeight, pos.Z)
+        end
+    end)
+end
+
+function SAHUB:DisableFloat()
+    if self.FloatPart then
+        self.FloatPart:Destroy()
+        self.FloatPart = nil
+    end
+    if self.FloatGui then
+        self.FloatGui:Destroy()
+        self.FloatGui = nil
+    end
+    
+    -- Disconnect float-related connections
+    for _, connection in pairs(self.Connections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    self.Connections = {}
+end
+
+function SAHUB:UpdateFloatHeight(heightLabel)
+    if self.FloatPart and heightLabel then
+        heightLabel.Text = "Height: " .. tostring(math.floor(self.CurrentHeight))
+    end
+end
+
+function SAHUB:SetupChatCommands()
+    self.Player.Chatted:Connect(function(msg)
+        msg = msg:lower()
+        if msg == "!cmds" then
+            self.CommandsGui.Visible = not self.CommandsGui.Visible
+        else
+             self:ExecuteCommand(msg)
+        end
+    end)
+end
+
+function SAHUB:SetupKeybind()
+    Services.UserInputService.InputBegan:Connect(function(input, processed)
+        if processed then return end
+        if input.KeyCode == CONFIG.KEYBIND then
+            self.CommandsGui.Visible = not self.CommandsGui.Visible
+        end
+    end)
+end
+-- Initialize
+SAHUB:Init()
