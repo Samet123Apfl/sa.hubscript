@@ -1,3 +1,9 @@
+loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()
+
+
+
+
+
 -- SA.HUB Script
 -- Professional Edition v2.0
 
